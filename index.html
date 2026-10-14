@@ -192,7 +192,7 @@ body{background:var(--abyss);color:var(--foam);font-family:var(--f-body);font-si
     </table>
     <div class="field" style="margin-top:12px">
       <label for="motion-max">叩きの強さ1とみなす揺れ：<span id="motion-max-val"></span> m/s²</label>
-      <input id="motion-max" type="range" min="0.3" max="15" step="0.1" style="min-height:32px;padding:0">
+      <input id="motion-max" type="range" min="0.05" max="3" step="0.01" style="min-height:32px;padding:0">
     </div>
     <p>揺れセンサーを有効にしてから、いちばん強く叩いた時の「直前に叩いた時の揺れ」を見て、その値にスライダーを合わせてください。それより弱い叩きは0〜1の間の強さになります。</p>
   </section>
@@ -431,8 +431,9 @@ $('#diag-reset').addEventListener('click', () => { diag.n = 0; diag.cur = {}; di
 
 /* ---------- motion sensor: how hard a tap shakes the iPad ---------- */
 const MOTION_KEY = 'itami-minamo-motion-max';
-let motionMax = 4;
-try { const v = parseFloat(localStorage.getItem(MOTION_KEY)); if (v > 0) motionMax = v; } catch (_) {}
+// Measured on the user's iPad: a hard tap peaks around 0.27 m/s².
+let motionMax = 0.3;
+try { const v = parseFloat(localStorage.getItem(MOTION_KEY)); if (v > 0 && v <= 3) motionMax = v; } catch (_) {}
 const motion = { on: false, buf: [], last: 0, gx: 0, gy: 0, gz: 0 };
 function onMotion(e) {
   let ax, ay, az;
@@ -477,10 +478,10 @@ async function enableMotion() {
 }
 $('#motion-btn').addEventListener('click', enableMotion);
 const motionInput = $('#motion-max');
-motionInput.value = motionMax; $('#motion-max-val').textContent = motionMax.toFixed(1);
+motionInput.value = motionMax; $('#motion-max-val').textContent = motionMax.toFixed(2);
 motionInput.addEventListener('input', () => {
-  motionMax = parseFloat(motionInput.value) || 4;
-  $('#motion-max-val').textContent = motionMax.toFixed(1);
+  motionMax = parseFloat(motionInput.value) || 0.3;
+  $('#motion-max-val').textContent = motionMax.toFixed(2);
   try { localStorage.setItem(MOTION_KEY, String(motionMax)); } catch (_) {}
 });
 
