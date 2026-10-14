@@ -175,7 +175,7 @@ body{background:var(--abyss);color:var(--foam);font-family:var(--f-body);font-si
   <div class="readout" aria-live="off">
     <div class="metric"><span>触れている指</span><strong id="m-fingers">0</strong></div>
     <div class="metric"><span>タッチ時間</span><strong id="m-dur">0.00s</strong></div>
-    <div class="metric"><span>強さ</span><strong id="m-str">0.00</strong><em id="m-src">動きから推定</em></div>
+    <div class="metric"><span>強さ</span><strong id="m-str">0.00</strong><em id="m-src">接触面積</em></div>
     <div class="metric"><span>速さ</span><strong id="m-speed">0.0</strong><em>画面対角/秒</em></div>
     <div class="metric"><span>位置</span><strong id="m-pos">—</strong></div>
     <div class="metric"><span>打数（記録中）</span><strong id="m-taps">—</strong></div>
@@ -290,7 +290,6 @@ function render() {
 
 /* ---------- touch reading ---------- */
 const active = new Map();
-let recentTaps = [];
 let lastSrc = '動きから推定';
 let fingerSeq = 0;
 const now = () => performance.now();
@@ -300,20 +299,14 @@ function hwStrength(e) {
     if (e.pressure > 0 && e.pressure !== 0.5 && e.pressure !== 1) { lastSrc = '画面の圧力'; return e.pressure; }
     // Measured on iPad Safari: contact width steps through ~62.7 / 83.6 / 104.4 / 125.3 as the finger presses harder.
     const sz = Math.max(e.width || 0, e.height || 0);
-    if (sz > 2) { lastSrc = '接触面積＋動き'; return clamp((sz - SIZE_MIN) / (SIZE_MAX - SIZE_MIN)); }
+    if (sz > 2) { lastSrc = '接触面積'; return clamp((sz - SIZE_MIN) / (SIZE_MAX - SIZE_MIN)); }
   }
-  lastSrc = '動きから推定';
+  lastSrc = 'マウス（強さは測れません）';
   return null;
 }
-function mix(hw, est) { return hw == null ? est : clamp(hw * 0.6 + est * 0.4); }
 function pos(e) { const r = cv.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; }
-function liveStrength(p, t) {
-  let est;
-  if (p.kind === 'rub') est = clamp(0.25 + p.speed * 0.35);
-  else if (p.kind === 'press') est = clamp(0.3 + (t - p.t0) / 3500);
-  else est = 0.4;
-  return mix(p.hw, est);
-}
+// Strength comes only from measured values (contact area), never from touch time or speed.
+function liveStrength(p) { return p.hw == null ? 0.5 : p.hw; }
 function logPoint(p, type, s) {
   if (!session) return;
   const t = now();
@@ -332,7 +325,7 @@ cv.addEventListener('pointerdown', e => {
   p.hwMax = p.hw;
   active.set(e.pointerId, p);
   disturb(x, y, -40, 12);
-  logPoint(p, 0, mix(p.hw, 0.4));
+  logPoint(p, 0, liveStrength(p));
   $('#hint').classList.add('gone');
 });
 cv.addEventListener('pointermove', e => {
@@ -347,12 +340,12 @@ cv.addEventListener('pointermove', e => {
   p.path += d; p.segPath += d; p.x = x; p.y = y; p.lt = t;
   if (p.kind !== 'rub' && p.path > 22) p.kind = 'rub';
   if (p.kind === 'rub' && d > 0) {
-    const s = liveStrength(p, t);
+    const s = liveStrength(p);
     sample(p, s);
     disturb(x, y, -(25 + s * 80) * Math.min(1, d / 8), 10 + s * 14);
     warm(x, y, s * 0.12, 18 + s * 16);
   }
-  logPoint(p, 1, liveStrength(p, t));
+  logPoint(p, 1, liveStrength(p));
 });
 function endPointer(e) {
   const p = active.get(e.pointerId);
@@ -362,22 +355,22 @@ function endPointer(e) {
   let s;
   if (p.kind === 'pending') {
     p.kind = 'tap';
-    recentTaps = recentTaps.filter(tt => t - tt < 900); recentTaps.push(t);
-    const rapid = recentTaps.length;
-    const est = clamp(0.3 + (1 - dur / 350) * 0.35 + (rapid - 1) * 0.12);
-    // A tap's strength is the widest contact reached while the finger was down,
-    // and, when the motion sensor is on, mostly how hard the iPad shook at that moment.
-    s = mix(p.hwMax, est);
+    // A tap's strength: mostly how hard the iPad shook at that moment (motion sensor on),
+    // plus the widest contact area reached while the finger was down.
+    const area = p.hwMax == null ? 0.5 : p.hwMax;
+    s = area;
+    diagPut('tap.area', area);
     if (motionLive()) {
-      const peak = motionPeak(p.t0 - 60, t + 40);
+      const peak = motionPeak(p.t0 - 80, t + 40);
       diagPut('m.peak', peak);
-      s = clamp(clamp(peak / motionMax) * 0.7 + s * 0.3);
+      s = clamp(clamp(peak / motionMax) * 0.8 + area * 0.2);
       lastSrc = '揺れ＋接触面積';
     }
+    diagPut('tap.s', s);
     disturb(p.x, p.y, -(110 + s * 260), 16 + s * 26);
     warm(p.x, p.y, 0.3 + s * 0.7, 22 + s * 30);
   } else {
-    s = p.sn ? p.ssum / p.sn : liveStrength(p, t);
+    s = p.sn ? p.ssum / p.sn : liveStrength(p);
     if (p.kind === 'press') disturb(p.x, p.y, 70, 22);
   }
   logPoint(p, 2, s);
@@ -388,7 +381,8 @@ function endPointer(e) {
 const DIAG_FIELDS = [
   ['p.width', 'ポインタ幅 width'], ['p.height', 'ポインタ高さ height'], ['p.pressure', '圧力 pressure'],
   ['t.radiusX', 'タッチ半径 radiusX'], ['t.radiusY', 'タッチ半径 radiusY'], ['t.force', 'タッチの力 force'],
-  ['m.acc', '揺れ（加速度 m/s²）'], ['m.peak', '直前に叩いた時の揺れ'],
+  ['m.acc', '揺れ（加速度 m/s²）'], ['m.jerk', '揺れの急な変化'], ['m.peak', '直前に叩いた時の揺れ'],
+  ['tap.area', '直前の叩き：面積の強さ'], ['tap.s', '直前の叩き：最終の強さ'],
 ];
 const diag = { n: 0, cur: {}, min: {}, max: {}, type: '—' };
 const diagBody = $('#diag-body');
@@ -434,21 +428,21 @@ const MOTION_KEY = 'itami-minamo-motion-max';
 // Measured on the user's iPad: a hard tap peaks around 0.27 m/s².
 let motionMax = 0.3;
 try { const v = parseFloat(localStorage.getItem(MOTION_KEY)); if (v > 0 && v <= 3) motionMax = v; } catch (_) {}
-const motion = { on: false, buf: [], last: 0, gx: 0, gy: 0, gz: 0 };
+const motion = { on: false, buf: [], last: 0, prev: null };
+// A tap is a sudden jolt, so the impact value is the larger of the linear acceleration
+// and the jump between consecutive raw readings (the jump catches short knocks that iOS smooths out).
 function onMotion(e) {
-  let ax, ay, az;
-  const a = e.acceleration;
-  if (a && a.x != null) { ax = a.x; ay = a.y; az = a.z; }
-  else {
-    const g = e.accelerationIncludingGravity;
-    if (!g || g.x == null) return;
-    motion.gx = motion.gx * 0.9 + g.x * 0.1; motion.gy = motion.gy * 0.9 + g.y * 0.1; motion.gz = motion.gz * 0.9 + g.z * 0.1;
-    ax = g.x - motion.gx; ay = g.y - motion.gy; az = g.z - motion.gz;
+  const a = e.acceleration, g = e.accelerationIncludingGravity;
+  const acc = a && a.x != null ? Math.hypot(a.x, a.y, a.z) : 0;
+  let jerk = 0;
+  if (g && g.x != null) {
+    if (motion.prev) jerk = Math.hypot(g.x - motion.prev[0], g.y - motion.prev[1], g.z - motion.prev[2]);
+    motion.prev = [g.x, g.y, g.z];
   }
-  const t = now(), m = Math.hypot(ax, ay, az);
+  const t = now(), m = Math.max(acc, jerk);
   motion.buf.push([t, m]); motion.last = t;
   while (motion.buf.length && t - motion.buf[0][0] > 1500) motion.buf.shift();
-  diagPut('m.acc', m);
+  diagPut('m.acc', acc); diagPut('m.jerk', jerk);
 }
 function motionLive() { return motion.on && now() - motion.last < 600; }
 function motionPeak(t0, t1) { let p = 0; for (const [t, m] of motion.buf) if (t >= t0 && t <= t1 && m > p) p = m; return p; }
@@ -493,7 +487,7 @@ function pressTick(p, t) {
   const held = t - p.t0;
   if (p.kind === 'pending' && held > 450) p.kind = 'press';
   if (p.kind !== 'press') return;
-  const s = liveStrength(p, t);
+  const s = liveStrength(p);
   if (t - p.lastPulse > 320) {
     disturb(p.x, p.y, -(45 + s * 110), 12 + s * 20);
     warm(p.x, p.y, s * 0.25, 20 + s * 24);
@@ -529,7 +523,7 @@ function startSession() {
 function finishSession() {
   const t = now();
   for (const p of active.values()) {
-    const s = p.kind === 'pending' ? mix(p.hw, 0.4) : (p.sn ? p.ssum / p.sn : liveStrength(p, t));
+    const s = p.kind === 'pending' ? liveStrength(p) : (p.sn ? p.ssum / p.sn : liveStrength(p));
     addGesture(p, t, s); p.counted = true;
   }
   const sess = session; session = null;
@@ -875,7 +869,7 @@ function frame(t) {
   for (const p of active.values()) { pressTick(p, t); }
   if (active.size) {
     const p = [...active.values()].pop();
-    setLive(p, t, liveStrength(p, t));
+    setLive(p, t, liveStrength(p));
   }
   $('#m-fingers').textContent = active.size;
   if (!active.size && !rp && !session && t - lastIdleDrop > 2600) {
