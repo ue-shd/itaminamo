@@ -1,0 +1,900 @@
+<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="痛みの水面"><meta name="theme-color" content="#061419"><style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);box-sizing:border-box;height:100%}*,*::before,*::after{box-sizing:border-box}body{margin:0}[hidden]{display:none!important}</style></head><body><title>痛みの水面</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Dela+Gothic+One&family=IBM+Plex+Mono:wght@400;500&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap">
+<style>
+/* Layout: the whole screen is a water surface you touch. Controls float on top, live readouts along the bottom, saved records slide in from the right, results rise from the bottom. Single deep-water look on purpose. */
+:root{
+  --abyss:#061419;
+  --deep:#0b2630;
+  --panel:rgba(8,30,38,.9);
+  --panel-solid:#0c2731;
+  --line:rgba(150,215,210,.2);
+  --foam:#e1f4f0;
+  --muted:#8db0b3;
+  --calm:#5fd0c4;
+  --ember:#ffb14a;
+  --pain:#ff6a4d;
+  --f-display:"Dela Gothic One","Hiragino Sans","Yu Gothic",sans-serif;
+  --f-body:"Zen Kaku Gothic New","Hiragino Sans","Yu Gothic",system-ui,sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+  color-scheme:dark;
+}
+html,body{height:100%}
+body{background:var(--abyss);color:var(--foam);font-family:var(--f-body);font-size:15px;overflow:hidden;
+  -webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
+#app{position:relative;height:100%;overflow:hidden}
+#water{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;cursor:crosshair}
+#words{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+.word{position:absolute;font-family:var(--f-display);white-space:nowrap;transform:translate(-50%,-50%);
+  text-shadow:0 2px 18px rgba(0,0,0,.45);animation:rise 1.4s ease-out forwards;will-change:transform,opacity}
+@keyframes rise{
+  0%{opacity:0;transform:translate(-50%,-30%) scale(.6) rotate(var(--r))}
+  12%{opacity:1;transform:translate(-50%,-50%) scale(1.08) rotate(var(--r))}
+  100%{opacity:0;transform:translate(-50%,-160%) scale(1) rotate(var(--r))}
+}
+@media (prefers-reduced-motion:reduce){
+  .word{animation:fade 1.2s ease-out forwards}
+  @keyframes fade{0%{opacity:1}100%{opacity:0}}
+}
+
+/* top bar */
+.bar{position:absolute;top:0;left:0;right:0;display:flex;align-items:center;gap:12px;flex-wrap:wrap;
+  padding-block:14px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
+  pointer-events:none}
+.bar>*{pointer-events:auto}
+.brand{font-family:var(--f-display);font-size:20px;letter-spacing:.04em;margin-right:auto;pointer-events:none}
+.brand small{display:block;font-family:var(--f-body);font-size:11px;letter-spacing:.12em;color:var(--muted);font-weight:500}
+.seg{display:flex;background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:4px;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+.seg button{border:0;background:transparent;color:var(--muted);font:inherit;font-weight:700;padding:0 18px;min-height:40px;border-radius:999px;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--foam);color:var(--deep)}
+.seg button:disabled{opacity:.45;cursor:default}
+.btn{font:inherit;font-weight:700;min-height:48px;padding:0 22px;border-radius:999px;border:1px solid var(--line);
+  background:var(--panel);color:var(--foam);cursor:pointer;display:inline-flex;align-items:center;gap:8px;
+  backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+.btn.primary{background:var(--pain);border-color:var(--pain);color:#1a0703}
+.btn.primary.survey{background:var(--calm);border-color:var(--calm);color:#04201d}
+.btn.running{background:var(--panel);color:var(--foam);border-color:var(--pain)}
+.btn:disabled{opacity:.5;cursor:default}
+.btn:focus-visible,.seg button:focus-visible,input:focus-visible,.link:focus-visible{outline:2px solid var(--ember);outline-offset:2px}
+.btn .num{font-family:var(--f-mono);font-variant-numeric:tabular-nums;font-weight:500}
+.dot{width:10px;height:10px;border-radius:50%;background:currentColor}
+.running .dot{background:var(--pain);animation:blink 1s steps(2) infinite}
+@keyframes blink{50%{opacity:.2}}
+.count{font-family:var(--f-mono);font-size:12px;background:var(--line);border-radius:999px;padding:2px 8px}
+
+#progress{position:absolute;left:0;top:0;height:4px;width:0;background:var(--pain);transition:width .1s linear}
+#progress.survey{background:var(--calm)}
+
+.hint{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);text-align:center;pointer-events:none;
+  color:var(--muted);transition:opacity .6s;width:min(520px,calc(100% - 32px))}
+.hint b{display:block;font-family:var(--f-display);font-weight:400;font-size:clamp(26px,5vw,44px);color:var(--foam);opacity:.85;margin-bottom:10px;text-wrap:balance}
+.hint.gone{opacity:0}
+
+/* bottom readouts */
+.readout{position:absolute;left:0;right:0;bottom:0;display:flex;gap:8px 22px;flex-wrap:wrap;align-items:flex-end;
+  padding-block:12px 16px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
+  background:linear-gradient(to top,rgba(6,20,25,.85),rgba(6,20,25,0));pointer-events:none}
+.metric{display:flex;flex-direction:column;gap:2px;min-width:64px}
+.metric span{font-size:11px;letter-spacing:.1em;color:var(--muted)}
+.metric strong{font-family:var(--f-mono);font-variant-numeric:tabular-nums;font-weight:500;font-size:18px}
+.metric em{font-style:normal;font-size:11px;color:var(--muted)}
+.metric.word-now strong{font-family:var(--f-display);font-weight:400;color:var(--ember)}
+
+/* bottom sheet */
+.sheet{position:absolute;left:0;right:0;bottom:0;max-height:82%;overflow:auto;background:var(--panel-solid);
+  border-top:1px solid var(--line);border-radius:22px 22px 0 0;box-shadow:0 -20px 60px rgba(0,0,0,.45);
+  padding-block:22px 28px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
+  -webkit-user-select:text;user-select:text}
+.sheet-inner{max-width:760px;margin:0 auto;display:flex;flex-direction:column;gap:18px}
+.sheet h2{font-family:var(--f-display);font-weight:400;font-size:24px;margin:0;text-wrap:balance}
+.sheet p{margin:0;color:var(--muted);line-height:1.7}
+.summary{display:grid;grid-template-columns:auto 1fr;gap:18px;align-items:start}
+@media (max-width:560px){.summary{grid-template-columns:1fr}}
+.thumb{width:180px;max-width:100%;aspect-ratio:3/4;border-radius:12px;background:var(--abyss);border:1px solid var(--line);display:block}
+.stats{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:12px 18px}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{font-family:var(--f-display);font-size:14px;padding:4px 10px;border-radius:999px;background:rgba(255,106,77,.14);color:var(--pain)}
+.chip i{font-style:normal;font-family:var(--f-mono);font-size:11px;color:var(--muted);margin-left:4px}
+.chip.empty{font-family:var(--f-body);background:var(--line);color:var(--muted)}
+.field{display:flex;flex-direction:column;gap:6px}
+.field label{font-size:12px;letter-spacing:.08em;color:var(--muted);font-weight:700}
+.field input{font:inherit;font-size:17px;min-height:50px;padding:0 14px;border-radius:12px;border:1px solid var(--line);background:var(--abyss);color:var(--foam);width:100%;min-width:0}
+.actions{display:flex;gap:10px;flex-wrap:wrap}
+.verdict{border-radius:14px;padding:14px 16px;border:1px solid var(--line);line-height:1.6}
+.verdict strong{font-family:var(--f-display);font-weight:400;font-size:18px;display:block}
+.verdict.hit{border-color:var(--calm);background:rgba(95,208,196,.1)}
+.verdict.miss{border-color:var(--ember);background:rgba(255,177,74,.1)}
+.matches{display:flex;flex-direction:column;gap:10px}
+.match{display:grid;grid-template-columns:72px 1fr auto;gap:14px;align-items:center;padding:10px;border-radius:14px;border:1px solid var(--line)}
+.match .thumb{width:72px}
+.match .name{font-weight:700;overflow-wrap:anywhere}
+.match .pct{font-family:var(--f-mono);font-variant-numeric:tabular-nums;font-size:22px;text-align:right}
+.meter{height:6px;border-radius:3px;background:var(--line);overflow:hidden;margin:6px 0}
+.meter>div{height:100%;background:var(--calm)}
+.match>div{min-width:0}
+
+/* drawer */
+.drawer{position:absolute;top:0;right:0;bottom:0;width:min(400px,100%);background:var(--panel-solid);border-left:1px solid var(--line);
+  display:flex;flex-direction:column;box-shadow:-20px 0 60px rgba(0,0,0,.4)}
+.drawer header{display:flex;align-items:center;gap:10px;padding-block:16px;padding-left:16px;padding-right:max(16px,env(safe-area-inset-right,0px));border-bottom:1px solid var(--line)}
+.drawer h2{font-family:var(--f-display);font-weight:400;font-size:20px;margin:0 auto 0 0}
+.drawer .list{overflow:auto;flex:1;padding-block:12px 24px;padding-left:16px;padding-right:max(16px,env(safe-area-inset-right,0px));display:flex;flex-direction:column;gap:10px}
+.rec{display:grid;grid-template-columns:64px 1fr;gap:12px;padding:10px;border-radius:14px;border:1px solid var(--line)}
+.rec .thumb{width:64px}
+.rec .name{font-weight:700;overflow-wrap:anywhere}
+.rec time{font-family:var(--f-mono);font-size:11px;color:var(--muted)}
+.rec .row{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.rec>div{min-width:0;display:flex;flex-direction:column;gap:4px}
+.link{font:inherit;font-size:13px;font-weight:700;background:transparent;border:1px solid var(--line);color:var(--foam);border-radius:999px;min-height:36px;padding:0 12px;cursor:pointer}
+.link.danger{color:var(--pain);border-color:rgba(255,106,77,.4)}
+.link.confirm{background:var(--pain);color:#1a0703}
+.empty-state{color:var(--muted);line-height:1.8;padding:18px 4px}
+.empty-state b{color:var(--foam);display:block;font-size:16px;margin-bottom:6px}
+.store-note{font-size:12px;color:var(--muted);padding:0 16px 16px;line-height:1.6}
+
+.diag{position:absolute;left:max(16px,env(safe-area-inset-left,0px));top:84px;width:min(400px,calc(100% - 32px));
+  background:var(--panel);border:1px solid var(--ember);border-radius:16px;padding:12px 14px;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+.diag header{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.diag h3{margin:0 auto 0 0;font-size:14px;font-weight:700;color:var(--ember)}
+.diag p{margin:8px 0 0;font-size:12px;color:var(--muted);line-height:1.6}
+.diag table{width:100%;border-collapse:collapse;font-family:var(--f-mono);font-variant-numeric:tabular-nums;font-size:13px}
+.diag th{font-family:var(--f-body);font-weight:500;font-size:11px;color:var(--muted);text-align:right;padding:3px 4px}
+.diag th:first-child,.diag td:first-child{text-align:left;font-family:var(--f-body)}
+.diag td{text-align:right;padding:3px 4px;border-top:1px solid var(--line)}
+.diag td.live{color:var(--ember)}
+.toast{position:absolute;left:50%;bottom:90px;transform:translateX(-50%);background:var(--foam);color:var(--deep);font-weight:700;
+  padding:10px 18px;border-radius:999px;box-shadow:0 10px 30px rgba(0,0,0,.4);max-width:calc(100% - 32px);text-align:center}
+.replay-banner{position:absolute;left:50%;top:84px;transform:translateX(-50%);display:flex;gap:10px;align-items:center;
+  background:var(--panel);border:1px solid var(--calm);border-radius:999px;padding:6px 6px 6px 16px;max-width:calc(100% - 32px)}
+.replay-banner span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+</style>
+
+<div id="app">
+  <canvas id="water" aria-label="水面。指で叩く、擦る、押し続けると波が立ちます"></canvas>
+  <div id="progress"></div>
+
+  <div class="hint" id="hint">
+    <b>叩く・擦る・押し続ける</b>
+    指の動きが水面の波になります。<br>「記録開始」を押すと10秒間の動きを記録し、自分のことばで名前を付けられます。
+  </div>
+
+  <div class="bar">
+    <div class="brand">痛みの水面<small>PAIN ONOMATOPOEIA</small></div>
+    <div class="seg" role="group" aria-label="モード">
+      <button id="mode-record" aria-pressed="true">記録モード</button>
+      <button id="mode-survey" aria-pressed="false">調査モード</button>
+    </div>
+    <button class="btn primary" id="start"><span class="dot"></span><span id="start-label">記録開始</span></button>
+    <button class="btn" id="motion-btn">揺れセンサー：オフ</button>
+    <button class="btn" id="open-diag">センサー確認</button>
+    <button class="btn" id="open-list">記録一覧 <span class="count" id="rec-count">0</span></button>
+  </div>
+
+  <div class="readout" aria-live="off">
+    <div class="metric"><span>触れている指</span><strong id="m-fingers">0</strong></div>
+    <div class="metric"><span>タッチ時間</span><strong id="m-dur">0.00s</strong></div>
+    <div class="metric"><span>強さ</span><strong id="m-str">0.00</strong><em id="m-src">動きから推定</em></div>
+    <div class="metric"><span>速さ</span><strong id="m-speed">0.0</strong><em>画面対角/秒</em></div>
+    <div class="metric"><span>位置</span><strong id="m-pos">—</strong></div>
+    <div class="metric"><span>打数（記録中）</span><strong id="m-taps">—</strong></div>
+  </div>
+
+  <div class="replay-banner" id="replay" hidden><span id="replay-label"></span><button class="link" id="replay-stop">停止</button></div>
+
+  <section class="diag" id="diag" hidden aria-label="センサー確認">
+    <header><h3>センサー確認（生の値）</h3><button class="link" id="diag-reset">リセット</button><button class="link" id="diag-close">閉じる</button></header>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:6px">入力の種類：<b id="diag-type" style="color:var(--foam)">—</b>　イベント数：<b id="diag-n" style="color:var(--foam)">0</b></div>
+    <table>
+      <thead><tr><th>値</th><th>いま</th><th>最小</th><th>最大</th></tr></thead>
+      <tbody id="diag-body"></tbody>
+    </table>
+    <div class="field" style="margin-top:12px">
+      <label for="motion-max">叩きの強さ1とみなす揺れ：<span id="motion-max-val"></span> m/s²</label>
+      <input id="motion-max" type="range" min="0.3" max="15" step="0.1" style="min-height:32px;padding:0">
+    </div>
+    <p>揺れセンサーを有効にしてから、いちばん強く叩いた時の「直前に叩いた時の揺れ」を見て、その値にスライダーを合わせてください。それより弱い叩きは0〜1の間の強さになります。</p>
+  </section>
+
+  <section class="sheet" id="sheet" hidden aria-live="polite"><div class="sheet-inner" id="sheet-inner"></div></section>
+
+  <aside class="drawer" id="drawer" hidden aria-label="記録一覧">
+    <header><h2>記録一覧</h2><button class="link" id="close-list">閉じる</button></header>
+    <div class="list" id="list"></div>
+    <div class="actions" id="file-actions" hidden style="padding:0 16px 12px">
+      <button class="link" id="export-btn">ファイルに書き出す</button>
+      <button class="link" id="import-btn">ファイルから読み込む</button>
+      <input type="file" id="import-file" accept="application/json,.json" hidden>
+    </div>
+    <div class="store-note" id="store-note">保存先を確認しています…</div>
+  </aside>
+
+  <div class="toast" id="toast" hidden></div>
+</div>
+
+<script>
+(() => {
+const $ = s => document.querySelector(s);
+const clamp = (v, a = 0, b = 1) => v < a ? a : v > b ? b : v;
+const DURATION = 10000;
+const MATCH_THRESHOLD = 0.8;
+const SIZE_MIN = 60, SIZE_MAX = 126;
+
+/* ---------- water simulation ---------- */
+const cv = $('#water'), ctx = cv.getContext('2d');
+const CELL = 5;
+let cw = 0, ch = 0, gw = 0, gh = 0, cur, prv, heat, off, octx, img, rowBase;
+function resize() {
+  const r = cv.getBoundingClientRect();
+  cw = r.width; ch = r.height;
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  cv.width = Math.round(cw * dpr); cv.height = Math.round(ch * dpr);
+  gw = Math.ceil(cw / CELL) + 2; gh = Math.ceil(ch / CELL) + 2;
+  cur = new Float32Array(gw * gh); prv = new Float32Array(gw * gh); heat = new Float32Array(gw * gh);
+  off = document.createElement('canvas'); off.width = gw; off.height = gh;
+  octx = off.getContext('2d'); img = octx.createImageData(gw, gh);
+  rowBase = [];
+  for (let y = 0; y < gh; y++) {
+    const k = y / gh;
+    rowBase.push([16 - k * 8, 52 - k * 22, 62 - k * 22]);
+  }
+}
+function disturb(px, py, amp, rad) {
+  const gx = px / CELL + 1, gy = py / CELL + 1, r = Math.max(1.2, rad / CELL);
+  const x0 = Math.max(1, Math.floor(gx - r)), x1 = Math.min(gw - 2, Math.ceil(gx + r));
+  const y0 = Math.max(1, Math.floor(gy - r)), y1 = Math.min(gh - 2, Math.ceil(gy + r));
+  for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+    const d = Math.hypot(x - gx, y - gy);
+    if (d <= r) cur[y * gw + x] += amp * Math.cos(d / r * Math.PI / 2);
+  }
+}
+function warm(px, py, s, rad) {
+  const gx = px / CELL + 1, gy = py / CELL + 1, r = Math.max(1.5, rad / CELL);
+  const x0 = Math.max(1, Math.floor(gx - r)), x1 = Math.min(gw - 2, Math.ceil(gx + r));
+  const y0 = Math.max(1, Math.floor(gy - r)), y1 = Math.min(gh - 2, Math.ceil(gy + r));
+  for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+    const d = Math.hypot(x - gx, y - gy);
+    if (d <= r) { const i = y * gw + x; heat[i] = Math.min(1.5, heat[i] + s * (1 - d / r)); }
+  }
+}
+function step() {
+  for (let y = 1; y < gh - 1; y++) {
+    let i = y * gw + 1;
+    for (let x = 1; x < gw - 1; x++, i++) {
+      prv[i] = ((cur[i - 1] + cur[i + 1] + cur[i - gw] + cur[i + gw]) * 0.5 - prv[i]) * 0.984;
+      heat[i] *= 0.993;
+    }
+  }
+  const t = cur; cur = prv; prv = t;
+}
+function render() {
+  const d = img.data;
+  for (let y = 1; y < gh - 1; y++) {
+    const [br, bg, bb] = rowBase[y];
+    let i = y * gw + 1;
+    for (let x = 1; x < gw - 1; x++, i++) {
+      const sx = cur[i + 1] - cur[i - 1], sy = cur[i + gw] - cur[i - gw];
+      const l = (-sx * 0.7 - sy * 1.0) * 0.8;
+      let r = br + l, g = bg + l * 1.2, b = bb + l * 1.15;
+      if (l > 26) { const s = Math.min(1, (l - 26) / 50); r += (225 - r) * s; g += (244 - g) * s; b += (240 - b) * s; }
+      const hm = heat[i] > 1 ? 1 : heat[i];
+      if (hm > 0.01) { r += (255 - r) * hm * 0.6; g += (106 - g) * hm * 0.42; b += (77 - b) * hm * 0.5; }
+      const o = i * 4; d[o] = r; d[o + 1] = g; d[o + 2] = b; d[o + 3] = 255;
+    }
+  }
+  octx.putImageData(img, 0, 0);
+  ctx.imageSmoothingEnabled = true;
+  ctx.drawImage(off, 1, 1, gw - 2, gh - 2, 0, 0, cv.width, cv.height);
+}
+
+/* ---------- touch reading ---------- */
+const active = new Map();
+let recentTaps = [];
+let lastSrc = '動きから推定';
+let fingerSeq = 0;
+const now = () => performance.now();
+function hwStrength(e) {
+  if (e.pointerType === 'pen' && e.pressure > 0) { lastSrc = 'ペンの筆圧'; return e.pressure; }
+  if (e.pointerType === 'touch') {
+    if (e.pressure > 0 && e.pressure !== 0.5 && e.pressure !== 1) { lastSrc = '画面の圧力'; return e.pressure; }
+    // Measured on iPad Safari: contact width steps through ~62.7 / 83.6 / 104.4 / 125.3 as the finger presses harder.
+    const sz = Math.max(e.width || 0, e.height || 0);
+    if (sz > 2) { lastSrc = '接触面積＋動き'; return clamp((sz - SIZE_MIN) / (SIZE_MAX - SIZE_MIN)); }
+  }
+  lastSrc = '動きから推定';
+  return null;
+}
+function mix(hw, est) { return hw == null ? est : clamp(hw * 0.6 + est * 0.4); }
+function pos(e) { const r = cv.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; }
+function liveStrength(p, t) {
+  let est;
+  if (p.kind === 'rub') est = clamp(0.25 + p.speed * 0.35);
+  else if (p.kind === 'press') est = clamp(0.3 + (t - p.t0) / 3500);
+  else est = 0.4;
+  return mix(p.hw, est);
+}
+function logPoint(p, type, s) {
+  if (!session) return;
+  const t = now();
+  if (type === 1 && t - p.lastLog < 30) return;
+  p.lastLog = t;
+  session.pts.push([Math.round(t - session.t0), +(p.x / cw).toFixed(3), +(p.y / ch).toFixed(3), +s.toFixed(2), type, p.fid]);
+}
+function sample(p, s) { p.ssum += s; p.sn++; if (s > p.smax) p.smax = s; }
+
+cv.addEventListener('pointerdown', e => {
+  e.preventDefault();
+  try { cv.setPointerCapture(e.pointerId); } catch (_) {}
+  const [x, y] = pos(e), t = now();
+  const p = { fid: fingerSeq++ % 100, t0: t, lt: t, x, y, x0: x, y0: y, segX: x, segY: y, path: 0, segPath: 0,
+    kind: 'pending', hw: hwStrength(e), ssum: 0, sn: 0, smax: 0, speed: 0, lastEmit: t, lastPulse: t, lastLog: 0 };
+  p.hwMax = p.hw;
+  active.set(e.pointerId, p);
+  disturb(x, y, -40, 12);
+  logPoint(p, 0, mix(p.hw, 0.4));
+  $('#hint').classList.add('gone');
+});
+cv.addEventListener('pointermove', e => {
+  const p = active.get(e.pointerId);
+  if (!p) return;
+  const [x, y] = pos(e), t = now();
+  const d = Math.hypot(x - p.x, y - p.y), dt = Math.max(1, t - p.lt);
+  const hw = hwStrength(e);
+  if (hw != null) { p.hw = hw; p.hwMax = Math.max(p.hwMax ?? 0, hw); }
+  const diag = Math.hypot(cw, ch);
+  p.speed = p.speed * 0.7 + (d / dt) * 1000 / diag * 0.3;
+  p.path += d; p.segPath += d; p.x = x; p.y = y; p.lt = t;
+  if (p.kind !== 'rub' && p.path > 22) p.kind = 'rub';
+  if (p.kind === 'rub' && d > 0) {
+    const s = liveStrength(p, t);
+    sample(p, s);
+    disturb(x, y, -(25 + s * 80) * Math.min(1, d / 8), 10 + s * 14);
+    warm(x, y, s * 0.12, 18 + s * 16);
+  }
+  logPoint(p, 1, liveStrength(p, t));
+});
+function endPointer(e) {
+  const p = active.get(e.pointerId);
+  if (!p) return;
+  active.delete(e.pointerId);
+  const t = now(), dur = t - p.t0;
+  let s;
+  if (p.kind === 'pending') {
+    p.kind = 'tap';
+    recentTaps = recentTaps.filter(tt => t - tt < 900); recentTaps.push(t);
+    const rapid = recentTaps.length;
+    const est = clamp(0.3 + (1 - dur / 350) * 0.35 + (rapid - 1) * 0.12);
+    // A tap's strength is the widest contact reached while the finger was down,
+    // and, when the motion sensor is on, mostly how hard the iPad shook at that moment.
+    s = mix(p.hwMax, est);
+    if (motionLive()) {
+      const peak = motionPeak(p.t0 - 60, t + 40);
+      diagPut('m.peak', peak);
+      s = clamp(clamp(peak / motionMax) * 0.7 + s * 0.3);
+      lastSrc = '揺れ＋接触面積';
+    }
+    disturb(p.x, p.y, -(110 + s * 260), 16 + s * 26);
+    warm(p.x, p.y, 0.3 + s * 0.7, 22 + s * 30);
+  } else {
+    s = p.sn ? p.ssum / p.sn : liveStrength(p, t);
+    if (p.kind === 'press') disturb(p.x, p.y, 70, 22);
+  }
+  logPoint(p, 2, s);
+  addGesture(p, t, s);
+  setLive(p, t, s);
+}
+/* ---------- sensor check: raw values the device actually reports ---------- */
+const DIAG_FIELDS = [
+  ['p.width', 'ポインタ幅 width'], ['p.height', 'ポインタ高さ height'], ['p.pressure', '圧力 pressure'],
+  ['t.radiusX', 'タッチ半径 radiusX'], ['t.radiusY', 'タッチ半径 radiusY'], ['t.force', 'タッチの力 force'],
+  ['m.acc', '揺れ（加速度 m/s²）'], ['m.peak', '直前に叩いた時の揺れ'],
+];
+const diag = { n: 0, cur: {}, min: {}, max: {}, type: '—' };
+const diagBody = $('#diag-body');
+for (const [k, label] of DIAG_FIELDS) {
+  const tr = document.createElement('tr');
+  tr.innerHTML = '<td></td><td class="live"></td><td></td><td></td>';
+  tr.firstChild.textContent = label; tr.dataset.k = k;
+  diagBody.appendChild(tr);
+}
+function diagPut(k, v) {
+  if (typeof v !== 'number' || isNaN(v)) return;
+  diag.cur[k] = v;
+  diag.min[k] = k in diag.min ? Math.min(diag.min[k], v) : v;
+  diag.max[k] = k in diag.max ? Math.max(diag.max[k], v) : v;
+}
+function diagPointer(e) {
+  diag.n++; diag.type = { touch: '指（タッチ）', pen: 'Apple Pencil', mouse: 'マウス' }[e.pointerType] || e.pointerType;
+  diagPut('p.width', e.width); diagPut('p.height', e.height); diagPut('p.pressure', e.pressure);
+  diagPut('p.tiltX', e.tiltX); diagPut('p.tiltY', e.tiltY);
+}
+function diagTouch(e) {
+  const t = e.changedTouches && e.changedTouches[0];
+  if (!t) return;
+  diagPut('t.radiusX', t.radiusX); diagPut('t.radiusY', t.radiusY); diagPut('t.force', t.force);
+}
+const fmt = v => v == null ? '—' : (Math.abs(v) >= 10 ? v.toFixed(1) : v.toFixed(3));
+function diagRender() {
+  if ($('#diag').hidden) return;
+  $('#diag-type').textContent = diag.type; $('#diag-n').textContent = diag.n;
+  for (const tr of diagBody.children) {
+    const k = tr.dataset.k, c = tr.children;
+    c[1].textContent = fmt(diag.cur[k]); c[2].textContent = fmt(diag.min[k]); c[3].textContent = fmt(diag.max[k]);
+  }
+}
+['pointerdown', 'pointermove'].forEach(ev => cv.addEventListener(ev, e => { if (ev === 'pointerdown' || active.has(e.pointerId)) diagPointer(e); }));
+['touchstart', 'touchmove'].forEach(ev => cv.addEventListener(ev, diagTouch, { passive: true }));
+$('#open-diag').addEventListener('click', () => { const d = $('#diag'); d.hidden = !d.hidden; diagRender(); });
+$('#diag-close').addEventListener('click', () => { $('#diag').hidden = true; });
+$('#diag-reset').addEventListener('click', () => { diag.n = 0; diag.cur = {}; diag.min = {}; diag.max = {}; diag.type = '—'; diagRender(); });
+
+/* ---------- motion sensor: how hard a tap shakes the iPad ---------- */
+const MOTION_KEY = 'itami-minamo-motion-max';
+let motionMax = 4;
+try { const v = parseFloat(localStorage.getItem(MOTION_KEY)); if (v > 0) motionMax = v; } catch (_) {}
+const motion = { on: false, buf: [], last: 0, gx: 0, gy: 0, gz: 0 };
+function onMotion(e) {
+  let ax, ay, az;
+  const a = e.acceleration;
+  if (a && a.x != null) { ax = a.x; ay = a.y; az = a.z; }
+  else {
+    const g = e.accelerationIncludingGravity;
+    if (!g || g.x == null) return;
+    motion.gx = motion.gx * 0.9 + g.x * 0.1; motion.gy = motion.gy * 0.9 + g.y * 0.1; motion.gz = motion.gz * 0.9 + g.z * 0.1;
+    ax = g.x - motion.gx; ay = g.y - motion.gy; az = g.z - motion.gz;
+  }
+  const t = now(), m = Math.hypot(ax, ay, az);
+  motion.buf.push([t, m]); motion.last = t;
+  while (motion.buf.length && t - motion.buf[0][0] > 1500) motion.buf.shift();
+  diagPut('m.acc', m);
+}
+function motionLive() { return motion.on && now() - motion.last < 600; }
+function motionPeak(t0, t1) { let p = 0; for (const [t, m] of motion.buf) if (t >= t0 && t <= t1 && m > p) p = m; return p; }
+function updateMotionBtn() {
+  const b = $('#motion-btn');
+  b.textContent = motionLive() ? '揺れセンサー：オン' : motion.on ? '揺れセンサー：値なし' : '揺れセンサー：オフ';
+  b.style.borderColor = motionLive() ? 'var(--calm)' : '';
+}
+async function enableMotion() {
+  if (motion.on) return;
+  try {
+    if (typeof DeviceMotionEvent === 'undefined') throw new Error('none');
+    if (typeof DeviceMotionEvent.requestPermission === 'function') {
+      const r = await DeviceMotionEvent.requestPermission();
+      if (r !== 'granted') throw new Error('denied');
+    }
+    window.addEventListener('devicemotion', onMotion);
+    motion.on = true;
+    setInterval(updateMotionBtn, 1000);
+    setTimeout(() => {
+      updateMotionBtn();
+      toast(motionLive() ? '揺れセンサーを有効にしました' : '揺れセンサーの値が届きません。この画面では使えないようです。');
+    }, 1200);
+  } catch (_) {
+    toast('揺れセンサーを使えませんでした。許可されなかったか、この画面では使えません。');
+  }
+}
+$('#motion-btn').addEventListener('click', enableMotion);
+const motionInput = $('#motion-max');
+motionInput.value = motionMax; $('#motion-max-val').textContent = motionMax.toFixed(1);
+motionInput.addEventListener('input', () => {
+  motionMax = parseFloat(motionInput.value) || 4;
+  $('#motion-max-val').textContent = motionMax.toFixed(1);
+  try { localStorage.setItem(MOTION_KEY, String(motionMax)); } catch (_) {}
+});
+
+cv.addEventListener('pointerup', endPointer);
+cv.addEventListener('pointercancel', endPointer);
+cv.addEventListener('contextmenu', e => e.preventDefault());
+
+function pressTick(p, t) {
+  const held = t - p.t0;
+  if (p.kind === 'pending' && held > 450) p.kind = 'press';
+  if (p.kind !== 'press') return;
+  const s = liveStrength(p, t);
+  if (t - p.lastPulse > 320) {
+    disturb(p.x, p.y, -(45 + s * 110), 12 + s * 20);
+    warm(p.x, p.y, s * 0.25, 20 + s * 24);
+    sample(p, s);
+    p.lastPulse = t;
+  }
+}
+function setLive(p, t, s) {
+  $('#m-dur').textContent = ((t - p.t0) / 1000).toFixed(2) + 's';
+  $('#m-str').textContent = s.toFixed(2);
+  $('#m-src').textContent = lastSrc;
+  $('#m-speed').textContent = p.speed.toFixed(1);
+  $('#m-pos').textContent = `${Math.round(p.x / cw * 100)}, ${Math.round(p.y / ch * 100)}`;
+}
+
+/* ---------- recording session ---------- */
+let session = null;
+let mode = 'record';
+function addGesture(p, t, s) {
+  if (!session || p.counted) return;
+  const st = Math.max(p.t0, session.t0);
+  session.gestures.push({ kind: p.kind === 'pending' ? 'tap' : p.kind, t0: st - session.t0, dur: Math.max(0, t - st),
+    s, dist: p.path / Math.hypot(cw, ch), x: p.x / cw, y: p.y / ch });
+}
+function startSession() {
+  if (session) return;
+  closeSheet(); closeDrawer(); stopReplay();
+  session = { mode, t0: now(), pts: [], gestures: [] };
+  for (const p of active.values()) { p.counted = false; }
+  $('#hint').classList.add('gone');
+  updateControls();
+}
+function finishSession() {
+  const t = now();
+  for (const p of active.values()) {
+    const s = p.kind === 'pending' ? mix(p.hw, 0.4) : (p.sn ? p.ssum / p.sn : liveStrength(p, t));
+    addGesture(p, t, s); p.counted = true;
+  }
+  const sess = session; session = null;
+  const rec = {
+    createdAt: new Date().toISOString(),
+    feat: computeFeatures(sess.gestures),
+    pts: thin(sess.pts, 600),
+  };
+  updateControls();
+  $('#progress').style.width = '0';
+  if (sess.mode === 'record') showSaveSheet(rec); else showSurveySheet(rec);
+}
+function thin(pts, max) {
+  if (pts.length <= max) return pts;
+  const keep = pts.filter(p => p[4] !== 1), moves = pts.filter(p => p[4] === 1);
+  const room = Math.max(0, max - keep.length), stepN = moves.length / Math.max(1, room);
+  const picked = [];
+  for (let i = 0; i < room && Math.floor(i * stepN) < moves.length; i++) picked.push(moves[Math.floor(i * stepN)]);
+  return keep.concat(picked).sort((a, b) => a[0] - b[0]);
+}
+function sessionTick(t) {
+  if (!session) return;
+  const el = t - session.t0;
+  $('#progress').style.width = Math.min(100, el / DURATION * 100) + '%';
+  $('#start-label').innerHTML = `${mode === 'record' ? '記録中' : '調査中'} <span class="num">${Math.max(0, (DURATION - el) / 1000).toFixed(1)}s</span>`;
+  $('#m-taps').textContent = session.gestures.filter(g => g.kind === 'tap').length;
+  if (el >= DURATION) finishSession();
+}
+
+/* ---------- features & similarity ---------- */
+function computeFeatures(gs) {
+  const D = DURATION;
+  const taps = gs.filter(g => g.kind === 'tap'), rubs = gs.filter(g => g.kind === 'rub'), press = gs.filter(g => g.kind === 'press');
+  const sum = (a, f) => a.reduce((n, g) => n + f(g), 0);
+  const contact = sum(gs, g => g.dur);
+  const rubTime = sum(rubs, g => g.dur), pressTime = sum(press, g => g.dur);
+  const tt = taps.map(g => g.t0).sort((a, b) => a - b);
+  const iv = tt.slice(1).map((v, i) => v - tt[i]);
+  let rhythm = 0;
+  if (iv.length > 1) {
+    const m = iv.reduce((a, b) => a + b, 0) / iv.length;
+    rhythm = Math.sqrt(iv.reduce((a, b) => a + (b - m) ** 2, 0) / iv.length) / Math.max(1, m);
+  }
+  const wsum = sum(gs, g => Math.max(g.dur, 120));
+  const avgStr = wsum ? sum(gs, g => g.s * Math.max(g.dur, 120)) / wsum : 0;
+  const cx = wsum ? sum(gs, g => g.x * Math.max(g.dur, 120)) / wsum : 0.5;
+  const cy = wsum ? sum(gs, g => g.y * Math.max(g.dur, 120)) / wsum : 0.5;
+  const spread = gs.length ? Math.sqrt(sum(gs, g => (g.x - cx) ** 2 + (g.y - cy) ** 2) / gs.length) : 0;
+  const moveDist = sum(rubs, g => g.dist);
+  const r3 = v => +v.toFixed(3);
+  return {
+    taps: taps.length, rubs: rubs.length, presses: press.length,
+    contactRatio: r3(clamp(contact / D)), avgDur: Math.round(gs.length ? contact / gs.length : 0),
+    avgStr: r3(avgStr), maxStr: r3(gs.length ? Math.max(...gs.map(g => g.s)) : 0),
+    moveDist: r3(moveDist), avgSpeed: r3(rubTime ? moveDist / (rubTime / 1000) : 0),
+    rubRatio: r3(contact ? rubTime / contact : 0), pressRatio: r3(contact ? pressTime / contact : 0),
+    rhythm: r3(rhythm), cx: r3(cx), cy: r3(cy), spread: r3(spread),
+  };
+}
+const FEATURE_SPEC = [
+  ['taps', v => clamp(v / 30), 1.4], ['contactRatio', v => v, 1], ['avgDur', v => clamp(v / 3000), 0.8],
+  ['avgStr', v => v, 1.2], ['maxStr', v => v, 0.6], ['moveDist', v => clamp(v / 10), 1],
+  ['avgSpeed', v => clamp(v / 3), 1], ['rubRatio', v => v, 1.4], ['pressRatio', v => v, 1.2],
+  ['rhythm', v => clamp(v / 1.5), 0.6], ['cx', v => v, 0.35], ['cy', v => v, 0.35], ['spread', v => clamp(v * 2), 0.4],
+];
+function similarity(a, b) {
+  let d = 0, w = 0;
+  for (const [k, f, wt] of FEATURE_SPEC) { const x = f(a.feat[k] || 0) - f(b.feat[k] || 0); d += wt * x * x; w += wt; }
+  return clamp(1 - Math.sqrt(d / w));
+}
+
+/* ---------- storage: shared artifact db, falling back to this browser ---------- */
+const LS_KEY = 'itami-minamo-records';
+const store = {
+  list: [], db: null, kind: 'local',
+  loadLocal() { try { this.list = JSON.parse(localStorage.getItem(LS_KEY) || '[]'); } catch (_) { this.list = []; } },
+  saveLocal() { try { localStorage.setItem(LS_KEY, JSON.stringify(this.list)); return true; } catch (_) { return false; } },
+  async init() {
+    this.loadLocal(); renderList();
+    let db = null;
+    try {
+      for (let i = 0; i < 10 && !(window.claude && window.claude.use); i++) await new Promise(r => setTimeout(r, 150));
+      if (window.claude && window.claude.use) db = await window.claude.use('db');
+    } catch (_) { db = null; }
+    if (!db) { this.kind = 'local'; renderList(); return; }
+    this.db = db; this.kind = 'db';
+    db.collection('records').orderBy('createdAt', 'desc').onSnapshot(snap => {
+      this.list = snap.docs.map(d => Object.assign({ id: d.id }, d.data()));
+      renderList();
+    }, () => { this.db = null; this.kind = 'local'; this.loadLocal(); renderList(); });
+  },
+  async add(rec) {
+    if (this.db) {
+      try { await this.db.collection('records').add(rec); return true; }
+      catch (e) {
+        toast(e && e.code === 'quota_exceeded' ? '保存できる量の上限です。古い記録を削除してください。' :
+              e && e.code === 'invalid_argument' ? 'このリンクでは保存する権限がありません。' : '保存できませんでした。もう一度お試しください。');
+        return false;
+      }
+    }
+    this.list.unshift(Object.assign({ id: 'l' + Date.now().toString(36) }, rec));
+    const ok = this.saveLocal(); renderList();
+    if (!ok) toast('この端末に保存できませんでした。');
+    return ok;
+  },
+  async remove(id) {
+    if (this.db) { try { await this.db.doc('records/' + id).delete(); } catch (_) { toast('削除できませんでした。'); } return; }
+    this.list = this.list.filter(r => r.id !== id); this.saveLocal(); renderList();
+  },
+};
+
+/* ---------- backup to / restore from a file (local storage only) ---------- */
+$('#export-btn').addEventListener('click', () => {
+  const body = JSON.stringify({ app: 'itami-minamo', exportedAt: new Date().toISOString(), records: store.list });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([body], { type: 'application/json' }));
+  a.download = 'itami-minamo-' + new Date().toISOString().slice(0, 10) + '.json';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+});
+$('#import-btn').addEventListener('click', () => $('#import-file').click());
+$('#import-file').addEventListener('change', async e => {
+  const f = e.target.files && e.target.files[0];
+  e.target.value = '';
+  if (!f) return;
+  try {
+    const data = JSON.parse(await f.text());
+    const incoming = Array.isArray(data.records) ? data.records : [];
+    const have = new Set(store.list.map(r => r.id));
+    const added = incoming.filter(r => r && r.id && r.feat && !have.has(r.id));
+    store.list = store.list.concat(added).sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+    store.saveLocal(); renderList();
+    toast(`${added.length}件の記録を読み込みました`);
+  } catch (_) {
+    toast('読み込めませんでした。このアプリで書き出したファイルを選んでください。');
+  }
+});
+
+/* ---------- thumbnails ---------- */
+function drawThumb(c, rec) {
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  const w = c.clientWidth || 72, h = c.clientHeight || 96;
+  c.width = w * dpr; c.height = h * dpr;
+  const g = c.getContext('2d'); g.scale(dpr, dpr);
+  g.fillStyle = '#061419'; g.fillRect(0, 0, w, h);
+  const col = t => { const k = clamp(t / DURATION); return `rgb(${95 + 160 * k | 0},${208 - 102 * k | 0},${196 - 119 * k | 0})`; };
+  const last = {};
+  g.lineCap = 'round'; g.lineWidth = Math.max(1, w / 90);
+  for (const [t, x, y, s, type, fid] of rec.pts || []) {
+    const X = x * w, Y = y * h;
+    if (type === 0) {
+      g.fillStyle = col(t); g.globalAlpha = 0.8;
+      g.beginPath(); g.arc(X, Y, 1.5 + s * w / 28, 0, Math.PI * 2); g.fill();
+      last[fid] = [X, Y];
+    } else if (last[fid]) {
+      g.strokeStyle = col(t); g.globalAlpha = 0.7;
+      g.beginPath(); g.moveTo(last[fid][0], last[fid][1]); g.lineTo(X, Y); g.stroke();
+      last[fid] = type === 2 ? null : [X, Y];
+    }
+  }
+  g.globalAlpha = 1;
+}
+
+/* ---------- UI: sheet ---------- */
+const sheet = $('#sheet'), inner = $('#sheet-inner');
+function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+function metric(label, value) { const m = el('div', 'metric'); m.appendChild(el('span', null, label)); m.appendChild(el('strong', null, value)); return m; }
+function summaryBlock(rec) {
+  const wrap = el('div', 'summary');
+  const c = el('canvas', 'thumb'); wrap.appendChild(c);
+  const right = el('div'); right.style.display = 'flex'; right.style.flexDirection = 'column'; right.style.gap = '14px'; right.style.minWidth = '0';
+  const st = el('div', 'stats');
+  const f = rec.feat;
+  st.append(metric('叩いた回数', f.taps + '回'), metric('触れていた割合', Math.round(f.contactRatio * 100) + '%'),
+    metric('平均の強さ', f.avgStr.toFixed(2)), metric('擦った距離', f.moveDist.toFixed(1)),
+    metric('擦りの割合', Math.round(f.rubRatio * 100) + '%'), metric('押し続けの割合', Math.round(f.pressRatio * 100) + '%'));
+  right.append(st);
+  wrap.appendChild(right);
+  requestAnimationFrame(() => drawThumb(c, rec));
+  return wrap;
+}
+function nameForm(id, label, placeholder, btnText, rec, extraBtn) {
+  const form = el('form'); form.style.display = 'flex'; form.style.flexDirection = 'column'; form.style.gap = '12px';
+  const f = el('div', 'field');
+  const lb = el('label', null, label); lb.htmlFor = id;
+  const inp = el('input'); inp.id = id; inp.type = 'text'; inp.maxLength = 60; inp.placeholder = placeholder; inp.autocomplete = 'off';
+  f.append(lb, inp);
+  const acts = el('div', 'actions');
+  const save = el('button', 'btn primary', btnText); save.type = 'submit';
+  acts.appendChild(save);
+  if (extraBtn) acts.appendChild(extraBtn);
+  form.append(f, acts);
+  form.addEventListener('submit', async ev => {
+    ev.preventDefault();
+    const name = inp.value.trim();
+    if (!name) { inp.focus(); inp.placeholder = '名前を入力してください'; return; }
+    save.disabled = true;
+    const ok = await store.add(Object.assign({ name }, rec));
+    save.disabled = false;
+    if (ok) { closeSheet(); toast(`「${name}」を保存しました`); }
+  });
+  return form;
+}
+function cancelBtn(text) { const b = el('button', 'btn', text); b.type = 'button'; b.addEventListener('click', closeSheet); return b; }
+function showSaveSheet(rec) {
+  inner.replaceChildren();
+  inner.append(el('h2', null, '10秒間の記録ができました'), summaryBlock(rec),
+    nameForm('rec-name', 'この痛みの名前（オノマトペなど）', '例：ズキズキ、ジンジンする、チクッ', 'この名前で保存', rec, cancelBtn('保存しない')));
+  openSheet();
+}
+function showSurveySheet(rec) {
+  inner.replaceChildren();
+  inner.append(el('h2', null, '調査結果'), summaryBlock(rec));
+  const ranked = store.list.map(r => ({ r, sim: similarity(rec, r) })).sort((a, b) => b.sim - a.sim).slice(0, 3);
+  const verdict = el('div', 'verdict');
+  if (!ranked.length) {
+    verdict.classList.add('miss');
+    verdict.append(el('strong', null, '比べる記録がまだありません'), el('span', null, 'この動きを最初の記録として登録できます。'));
+  } else if (ranked[0].sim >= MATCH_THRESHOLD) {
+    verdict.classList.add('hit');
+    verdict.append(el('strong', null, `「${ranked[0].r.name}」に近い痛みです`), el('span', null, `一致度 ${Math.round(ranked[0].sim * 100)}%。違う痛みなら、新しい記録として登録できます。`));
+  } else {
+    verdict.classList.add('miss');
+    verdict.append(el('strong', null, '近い記録はなさそうです'), el('span', null, `いちばん近いものでも一致度 ${Math.round(ranked[0].sim * 100)}%（目安は${MATCH_THRESHOLD * 100}%以上）。新しい記録として登録できます。`));
+  }
+  inner.appendChild(verdict);
+  if (ranked.length) {
+    const list = el('div', 'matches');
+    for (const { r, sim } of ranked) {
+      const row = el('div', 'match');
+      const c = el('canvas', 'thumb');
+      const mid = el('div');
+      mid.appendChild(el('div', 'name', r.name));
+      const meter = el('div', 'meter'); const bar = el('div'); bar.style.width = Math.round(sim * 100) + '%';
+      if (sim < MATCH_THRESHOLD) bar.style.background = 'var(--muted)';
+      meter.appendChild(bar); mid.append(meter);
+      row.append(c, mid, el('div', 'pct', Math.round(sim * 100) + '%'));
+      list.appendChild(row);
+      requestAnimationFrame(() => drawThumb(c, r));
+    }
+    inner.appendChild(list);
+  }
+  inner.appendChild(nameForm('survey-name', '新しい記録として登録する場合の名前（オノマトペなど）', '例：ヒリヒリ', '新しい記録として登録', rec, cancelBtn('閉じる')));
+  openSheet();
+}
+function openSheet() { sheet.hidden = false; sheet.scrollTop = 0; }
+function closeSheet() { sheet.hidden = true; inner.replaceChildren(); }
+
+/* ---------- UI: drawer ---------- */
+const drawer = $('#drawer'), listEl = $('#list');
+function openDrawer() { closeSheet(); drawer.hidden = false; renderList(); }
+function closeDrawer() { drawer.hidden = true; }
+function renderList() {
+  $('#rec-count').textContent = store.list.length;
+  $('#store-note').textContent = store.kind === 'db'
+    ? '記録はこのアプリに保存され、リンクを開ける人と共有されます。'
+    : 'この端末のブラウザにだけ保存しています。履歴を消すと記録も消えるので、ときどき「ファイルに書き出す」でバックアップしてください。';
+  $('#file-actions').hidden = store.kind === 'db';
+  if (drawer.hidden) return;
+  listEl.replaceChildren();
+  if (!store.list.length) {
+    const e = el('div', 'empty-state');
+    e.append(el('b', null, 'まだ記録がありません'), document.createTextNode('記録モードで「記録開始」を押し、10秒間画面を叩いたり擦ったりしてください。終わったら名前を付けて保存できます。'));
+    listEl.appendChild(e); return;
+  }
+  for (const r of store.list) {
+    const row = el('div', 'rec');
+    const c = el('canvas', 'thumb');
+    const body = el('div');
+    const d = new Date(r.createdAt);
+    const tm = el('time', null, isNaN(d) ? '' : d.toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }));
+    body.append(el('div', 'name', r.name || '名前なし'), tm);
+    const acts = el('div', 'row');
+    const play = el('button', 'link', '波で再生'); play.addEventListener('click', () => { closeDrawer(); replay(r); });
+    const del = el('button', 'link danger', '削除');
+    del.addEventListener('click', () => {
+      if (del.dataset.armed) { store.remove(r.id); return; }
+      del.dataset.armed = '1'; del.textContent = '本当に削除する'; del.classList.add('confirm');
+      setTimeout(() => { if (del.isConnected) { delete del.dataset.armed; del.textContent = '削除'; del.classList.remove('confirm'); } }, 3500);
+    });
+    acts.append(play, del); body.appendChild(acts);
+    row.append(c, body); listEl.appendChild(row);
+    requestAnimationFrame(() => drawThumb(c, r));
+  }
+}
+
+/* ---------- replay a saved record on the water ---------- */
+let rp = null;
+function replay(rec) {
+  stopReplay();
+  rp = { rec, t0: now(), i: 0 };
+  $('#replay-label').textContent = `「${rec.name}」を再生中`;
+  $('#replay').hidden = false;
+  $('#hint').classList.add('gone');
+}
+function stopReplay() { rp = null; $('#replay').hidden = true; }
+function replayTick(t) {
+  if (!rp) return;
+  const el2 = t - rp.t0, pts = rp.rec.pts || [];
+  while (rp.i < pts.length && pts[rp.i][0] <= el2) {
+    const [, x, y, s, type] = pts[rp.i++];
+    const X = x * cw, Y = y * ch;
+    if (type === 0) disturb(X, Y, -(60 + s * 140), 14 + s * 20);
+    else if (type === 1) { disturb(X, Y, -(20 + s * 60), 10 + s * 12); warm(X, Y, s * 0.1, 18); }
+    else warm(X, Y, s * 0.5, 24 + s * 20);
+  }
+  if (el2 > DURATION + 600) stopReplay();
+}
+$('#replay-stop').addEventListener('click', stopReplay);
+
+/* ---------- controls ---------- */
+function updateControls() {
+  const running = !!session;
+  const btn = $('#start');
+  btn.classList.toggle('running', running);
+  btn.classList.toggle('survey', mode === 'survey');
+  $('#progress').classList.toggle('survey', mode === 'survey');
+  $('#mode-record').disabled = running; $('#mode-survey').disabled = running;
+  $('#mode-record').setAttribute('aria-pressed', mode === 'record');
+  $('#mode-survey').setAttribute('aria-pressed', mode === 'survey');
+  if (!running) {
+    $('#start-label').textContent = mode === 'record' ? '記録開始' : '調査開始';
+    $('#m-taps').textContent = '—';
+  }
+  btn.disabled = running;
+}
+function setMode(m) { if (session) return; mode = m; closeSheet(); updateControls(); toast(m === 'record' ? '記録モード：10秒間の動きを名前付きで保存します' : '調査モード：10秒間の動きを、保存済みの記録と比べます'); }
+$('#mode-record').addEventListener('click', () => setMode('record'));
+$('#mode-survey').addEventListener('click', () => setMode('survey'));
+$('#start').addEventListener('click', startSession);
+$('#open-list').addEventListener('click', () => drawer.hidden ? openDrawer() : closeDrawer());
+$('#close-list').addEventListener('click', closeDrawer);
+
+let toastTimer;
+function toast(msg) {
+  const t = $('#toast'); t.textContent = msg; t.hidden = false;
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.hidden = true; }, 2600);
+}
+
+/* ---------- loop ---------- */
+let lastIdleDrop = 0;
+function frame(t) {
+  for (const p of active.values()) { pressTick(p, t); }
+  if (active.size) {
+    const p = [...active.values()].pop();
+    setLive(p, t, liveStrength(p, t));
+  }
+  $('#m-fingers').textContent = active.size;
+  if (!active.size && !rp && !session && t - lastIdleDrop > 2600) {
+    disturb(Math.random() * cw, Math.random() * ch, -(30 + Math.random() * 40), 10);
+    lastIdleDrop = t;
+  }
+  replayTick(t);
+  step();
+  render();
+  sessionTick(t);
+  diagRender();
+  requestAnimationFrame(frame);
+}
+
+resize();
+new ResizeObserver(resize).observe(cv);
+for (let i = 0; i < 3; i++) disturb(cw * (0.3 + i * 0.2), ch * (0.4 + (i % 2) * 0.15), -160, 22);
+updateControls();
+requestAnimationFrame(frame);
+store.init();
+})();
+</script>
+</body></html>
